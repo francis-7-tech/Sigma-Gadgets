@@ -2,6 +2,8 @@
 
 An online gadget shop for Nigerian customers. Browse phones, laptops, audio, wearables and accessories, sign in with Google, and pay by bank transfer.
 
+**Live site:** https://sigma-gadgets.vercel.app
+
 ## Features
 
 - Product catalogue with categories, search and sorting
