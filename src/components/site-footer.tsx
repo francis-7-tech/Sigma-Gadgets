@@ -27,6 +27,9 @@ export function SiteFooter() {
           <Link href="/credits" className="flex min-h-11 items-center px-3 font-semibold hover:underline">
             Photo credits
           </Link>
+          <Link href="/privacy" className="flex min-h-11 items-center px-3 font-semibold hover:underline">
+            Privacy
+          </Link>
         </nav>
         <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} Sigma Gadgets</p>
       </div>
