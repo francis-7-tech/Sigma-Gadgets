@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "illustrative_photo" boolean DEFAULT false NOT NULL;
