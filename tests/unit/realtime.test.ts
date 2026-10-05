@@ -8,6 +8,7 @@ vi.mock("pusher", () => ({
       pusher.constructed(options);
     }
     trigger = pusher.trigger;
+    authorizeChannel = (socketId: string, channel: string) => ({ auth: `key:signed(${socketId}:${channel})` });
   },
 }));
 
@@ -59,5 +60,44 @@ describe("notifyCartChanged", () => {
 
     expect(cartChannel("a")).toBe("private-cart-a");
     expect(cartChannel("a")).not.toBe(cartChannel("b"));
+  });
+});
+
+describe("authorizeCartChannel", () => {
+  it("signs a subscription to the user's own cart channel", async () => {
+    const { authorizeCartChannel } = await loadWith(keys);
+
+    expect(authorizeCartChannel("user-1", "1234.5678", "private-cart-user-1")).toEqual({
+      ok: true,
+      auth: "key:signed(1234.5678:private-cart-user-1)",
+    });
+  });
+
+  it("refuses another user's channel, other channels and malformed socket ids", async () => {
+    const { authorizeCartChannel } = await loadWith(keys);
+
+    for (const [socketId, channel] of [
+      ["1234.5678", "private-cart-user-2"],
+      ["1234.5678", "private-orders-user-1"],
+      ["1234.5678", "cart-user-1"],
+      ["not-a-socket", "private-cart-user-1"],
+    ]) {
+      expect(authorizeCartChannel("user-1", socketId, channel), channel).toEqual({ ok: false, reason: "forbidden" });
+    }
+  });
+
+  it("reports when Pusher isn't configured", async () => {
+    const { authorizeCartChannel, getRealtimeConfig } = await loadWith({});
+
+    expect(authorizeCartChannel("user-1", "1234.5678", "private-cart-user-1")).toEqual({ ok: false, reason: "unavailable" });
+    expect(getRealtimeConfig("user-1")).toBeNull();
+  });
+});
+
+describe("getRealtimeConfig", () => {
+  it("gives the app the public key, cluster and its own channel, never the secret", async () => {
+    const { getRealtimeConfig } = await loadWith(keys);
+
+    expect(getRealtimeConfig("user-1")).toEqual({ key: "key", cluster: "eu", channel: "private-cart-user-1", event: "cart-changed" });
   });
 });

@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { formatNaira } from "@/lib/money";
 import { deliveryFeeKobo } from "@/lib/site";
@@ -246,5 +247,93 @@ test("the website and the API share one cart for the same account", async ({ pag
 
     expect(response.status()).toBe(200);
     expect((await response.json()).cart.itemCount).toBe(3);
+  });
+});
+
+test("the app can sign in through the website, and sign out", async ({ page, context, request, baseURL }) => {
+  await signIn(context, customer, baseURL!);
+  const codeVerifier = randomBytes(32).toString("base64url");
+  const signInRequest = {
+    redirect_uri: "sigmagadgets://auth",
+    code_challenge: createHash("sha256").update(codeVerifier).digest("base64url"),
+    state: "state-123",
+  };
+  const requestCode = async () => {
+    const response = await page.request.post("/api/mobile/authorize", { form: signInRequest, maxRedirects: 0 });
+    expect(response.status()).toBe(303);
+    return new URL(response.headers().location);
+  };
+  let token = "";
+
+  await test.step("the website shows which account the app will use", async () => {
+    await page.goto(`/mobile/authorize?${new URLSearchParams(signInRequest)}`);
+
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in to the Sigma Gadgets app");
+    await expect(page.getByText(customer.email)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue to the app" })).toBeVisible();
+  });
+
+  await test.step("continuing sends a one-time code back to the app", async () => {
+    const location = await requestCode();
+    const code = location.searchParams.get("code");
+
+    expect(location.protocol).toBe("sigmagadgets:");
+    expect(location.searchParams.get("state")).toBe("state-123");
+    expect(code).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+
+    const exchange = await request.post("/api/mobile/token", { data: { code, codeVerifier } });
+    expect(exchange.status()).toBe(200);
+    const body = await exchange.json();
+    expect(body.user).toEqual({ id: customer.id, name: customer.name, email: customer.email, image: null });
+    expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
+    token = body.token;
+
+    const again = await request.post("/api/mobile/token", { data: { code, codeVerifier } });
+    expect(again.status(), "a code works only once").toBe(400);
+    expect((await again.json()).error.code).toBe("invalid_grant");
+  });
+
+  await test.step("the login token works on the API", async () => {
+    const me = await request.get("/api/v1/me", { headers: bearer(token) });
+    expect((await me.json()).user.email).toBe(customer.email);
+    expect((await request.get("/api/v1/cart", { headers: bearer(token) })).status()).toBe(200);
+  });
+
+  await test.step("a stolen code is useless without the app's secret", async () => {
+    const code = (await requestCode()).searchParams.get("code");
+    const thief = await request.post("/api/mobile/token", { data: { code, codeVerifier: randomBytes(32).toString("base64url") } });
+    expect(thief.status()).toBe(400);
+
+    const owner = await request.post("/api/mobile/token", { data: { code, codeVerifier } });
+    expect(owner.status(), "a failed attempt burns the code").toBe(400);
+  });
+
+  await test.step("only the app's own links are accepted", async () => {
+    const evilRequest = { ...signInRequest, redirect_uri: "https://evil.example/steal" };
+    const evil = await page.request.post("/api/mobile/authorize", { form: evilRequest, maxRedirects: 0 });
+    expect(evil.status()).toBe(400);
+
+    await page.goto(`/mobile/authorize?${new URLSearchParams(evilRequest)}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("This sign-in link isn't valid");
+  });
+
+  await test.step("a signed-out visitor is sent to sign in first", async () => {
+    const response = await request.post("/api/mobile/authorize", { form: signInRequest, maxRedirects: 0 });
+    expect(response.status()).toBe(303);
+    expect(response.headers().location).toContain("/login?callbackUrl=%2Fmobile%2Fauthorize");
+  });
+
+  await test.step("live updates are off in tests, and the endpoints say so", async () => {
+    expect((await (await request.get("/api/v1/realtime", { headers: bearer(token) })).json()).realtime).toBeNull();
+    const channel = { socket_id: "1234.5678", channel_name: `private-cart-${customer.id}` };
+    expect((await request.post("/api/v1/realtime/auth", { headers: bearer(token), form: channel })).status()).toBe(503);
+    expect((await request.post("/api/v1/realtime/auth", { form: channel })).status()).toBe(401);
+  });
+
+  await test.step("signing out ends the token", async () => {
+    const signedOut = await request.delete("/api/v1/session", { headers: bearer(token) });
+    expect(signedOut.status()).toBe(200);
+    expect((await request.get("/api/v1/me", { headers: bearer(token) })).status()).toBe(401);
+    expect((await request.delete("/api/v1/session")).status()).toBe(401);
   });
 });

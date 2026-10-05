@@ -1,11 +1,13 @@
 import { Search, ShoppingBag, UserRound } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
+import { CartLiveUpdates } from "@/components/cart-live-updates";
 import { CategoryNav } from "@/components/category-nav";
 import { Logo } from "@/components/logo";
 import { getSession } from "@/lib/auth";
 import { getCartCount } from "@/lib/cart";
 import { getCategoriesWithCounts } from "@/lib/catalog";
+import { getRealtimeConfig } from "@/lib/realtime";
 
 function initials(name: string | null | undefined, email: string | null | undefined) {
   const source = name?.trim() || email || "?";
@@ -20,9 +22,13 @@ export async function SiteHeader() {
     userId ? getCartCount(userId) : Promise.resolve(0),
     getCategoriesWithCounts(),
   ]);
+  const realtime = userId ? getRealtimeConfig(userId) : null;
 
   return (
     <header className="border-b border-border bg-card">
+      {realtime ? (
+        <CartLiveUpdates pusherKey={realtime.key} cluster={realtime.cluster} channel={realtime.channel} event={realtime.event} />
+      ) : null}
       <div className="mx-auto flex h-17 w-full max-w-[1200px] items-center justify-between gap-2 px-5">
         <Link href="/" aria-label="Sigma Gadgets home" className="min-h-11 min-w-0 content-center">
           <Logo />
