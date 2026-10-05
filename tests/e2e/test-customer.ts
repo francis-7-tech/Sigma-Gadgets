@@ -32,9 +32,14 @@ export async function createTestCustomer(): Promise<TestCustomer> {
     .values({ email, name, emailVerified: new Date(), welcomeEmailSentAt: new Date() })
     .returning({ id: users.id });
 
-  const sessionToken = randomUUID();
-  await getDb().insert(sessions).values({ sessionToken, userId: user.id, expires: new Date(Date.now() + 24 * 60 * 60 * 1000) });
+  const sessionToken = await createSession(user.id, new Date(Date.now() + 24 * 60 * 60 * 1000));
   return { id: user.id, email, name, sessionToken };
+}
+
+export async function createSession(userId: string, expires: Date): Promise<string> {
+  const sessionToken = randomUUID();
+  await getDb().insert(sessions).values({ sessionToken, userId, expires });
+  return sessionToken;
 }
 
 export async function signIn(context: BrowserContext, customer: TestCustomer, baseURL: string) {

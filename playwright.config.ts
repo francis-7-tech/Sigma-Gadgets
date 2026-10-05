@@ -19,6 +19,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
+    { name: "api", testMatch: "api.spec.ts", use: { browserName: "chromium", viewport: { width: 1280, height: 900 } } },
     { name: "desktop", testMatch: "checkout.spec.ts", use: { browserName: "chromium", viewport: { width: 1280, height: 900 } } },
     {
       name: "phone",
@@ -33,6 +34,7 @@ export default defineConfig({
     timeout: 300_000,
     env: {
       EMAIL_DRY_RUN: "true",
+      PUSHER_APP_ID: "",
       AUTH_TRUST_HOST: "true",
       APP_URL: baseURL,
     },

@@ -14,6 +14,7 @@ An online gadget shop for Nigerian customers. Browse phones, laptops, audio, wea
 - Unpaid orders are cancelled automatically and their stock is restored
 - Order history and order status pages
 - Mobile-first design
+- JSON API for the mobile app, with real-time cart updates
 
 ## Tech stack
 
@@ -25,6 +26,7 @@ An online gadget shop for Nigerian customers. Browse phones, laptops, audio, wea
 | Auth | Auth.js with Google |
 | Email | Brevo |
 | Images | Cloudinary |
+| Real-time | Pusher Channels |
 | Tests | Vitest, Playwright |
 | Hosting | Vercel, with Vercel Cron |
 
@@ -58,6 +60,7 @@ An online gadget shop for Nigerian customers. Browse phones, laptops, audio, wea
 | `EMAIL_FROM_NAME`, `EMAIL_FROM_ADDRESS` | Sender name and an address verified in Brevo |
 | `EMAIL_DRY_RUN` | `true` prints emails to the terminal instead of sending them |
 | `CRON_SECRET` | Any long random string |
+| `PUSHER_APP_ID`, `PUSHER_KEY`, `PUSHER_SECRET`, `PUSHER_CLUSTER` | Pusher → Channels → your app → App Keys. Optional: without them, live cart updates are off |
 | `DELIVERY_FEE_NAIRA` | Flat delivery fee, e.g. `5000` |
 | `BANK_NAME`, `BANK_ACCOUNT_NAME`, `BANK_ACCOUNT_NUMBER` | Bank details shown to customers |
 | `SHOP_WHATSAPP` | WhatsApp number shown to customers |
@@ -79,10 +82,30 @@ An online gadget shop for Nigerian customers. Browse phones, laptops, audio, wea
 | `npm run db:seed` | Load or update categories and products |
 | `npm run db:studio` | Open Drizzle Studio |
 
+## API
+
+The mobile app uses these endpoints. The website's cart runs the same code, so both always follow the same rules.
+
+| Method | Endpoint | What it does | Sign-in |
+|---|---|---|---|
+| `GET` | `/api/v1/products?category=&q=&sort=` | List products. `sort`: `newest`, `price-asc`, `price-desc` | No |
+| `GET` | `/api/v1/products/{slug}` | One product with description, specs and photos | No |
+| `GET` | `/api/v1/categories` | Categories with product counts | No |
+| `GET` | `/api/v1/me` | The signed-in user | Yes |
+| `GET` | `/api/v1/cart` | Cart lines and totals | Yes |
+| `POST` | `/api/v1/cart/items` | Add to cart. Body: `{ "productId": 1, "quantity": 2 }` | Yes |
+| `PATCH` | `/api/v1/cart/items/{productId}` | Set the quantity. Body: `{ "quantity": 3 }`; `0` removes | Yes |
+| `DELETE` | `/api/v1/cart/items/{productId}` | Remove from cart | Yes |
+
+- **Signing in:** send `Authorization: Bearer <token>`. The website's own sign-in cookie also works.
+- **Money:** amounts are whole kobo (₦1 = 100 kobo).
+- **Errors:** `{ "error": { "code": "out_of_stock", "message": "...", "fields": { } } }` with status 400, 401, 404 or 409.
+- **Real-time:** after every cart change the server sends a `cart-changed` event on the Pusher channel `private-cart-<userId>`. It carries no data; the app reloads the cart.
+
 ## Tests
 
-- **Unit tests** cover the welcome email (sent exactly once), checkout form rules, safe redirects, image URLs and money formatting.
-- **Browser tests** place a real order from product page to bank transfer instructions, and check every page at phone size.
+- **Unit tests** cover the welcome email (sent exactly once), cart rules, checkout form rules, API input checks, safe redirects, image URLs and money formatting.
+- **Browser tests** place a real order from product page to bank transfer instructions, check every page at phone size, and test the API, including that an item added on the website shows up through the API for the same account.
 
 Browser tests run against the database in `.env.local`. They create a test customer, then delete it along with its orders. First-time setup:
 
@@ -99,7 +122,7 @@ npx playwright install chromium
 ## Deployment (Vercel)
 
 1. Push the repo to GitHub and import it in Vercel.
-2. Add every environment variable from `.env.local`, with `EMAIL_DRY_RUN=false`.
+2. Add every environment variable from `.env.local`, including the four `PUSHER_` ones, with `EMAIL_DRY_RUN=false`.
 3. Deploy, then set `APP_URL` to your Vercel address and redeploy.
 4. In Google Auth Platform, add your Vercel address as an authorised JavaScript origin, and add `https://<your-domain>/api/auth/callback/google` as a redirect URI.
 5. In Google Auth Platform → Audience, click **Publish app** so anyone can sign in.

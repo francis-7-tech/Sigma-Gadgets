@@ -11,6 +11,7 @@ const publicPages = [
   { name: "product-sold-out", path: "/products/jbl-flip-4" },
   { name: "login", path: "/login?callbackUrl=%2Fcart" },
   { name: "credits", path: "/credits" },
+  { name: "privacy", path: "/privacy" },
   { name: "not-found", path: "/no-such-page" },
 ];
 

@@ -8,6 +8,7 @@ import { cartItems, orderItems, orders, products } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { checkoutSchema, type CheckoutField as Field } from "@/lib/checkout-schema";
 import { sendOrderConfirmation } from "@/lib/order-email";
+import { notifyCartChanged } from "@/lib/realtime";
 import { deliveryFeeKobo, PAYMENT_WINDOW_HOURS } from "@/lib/site";
 
 export type CheckoutState = {
@@ -104,7 +105,7 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
     return { message: "We couldn't place your order. Please try again.", values };
   }
 
-  await sendOrderConfirmation(orderId);
+  await Promise.all([sendOrderConfirmation(orderId), notifyCartChanged(user.id)]);
 
   revalidatePath("/", "layout");
   redirect(`/orders/${orderId}`);
